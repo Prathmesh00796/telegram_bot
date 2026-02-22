@@ -28,14 +28,13 @@ from telegram.helpers import escape_markdown
 
 # ================= CONFIG =================
 
-# UPDATED TOKEN AS REQUESTED
 TOKEN = "8136516055:AAGfHKSlQoSrWVVVmXGUcDqMGy7oA2DjtKA" 
 ADMIN_ID = 6843292223
 CHANNELS = ["@freecourse6969", "@lootlebigdeels", "@pcsheinstock"]
 BOT_USERNAME = "sheinfreecodesbot"
 DB_PATH = "referral_bot.db"
 
-# ================= FLASK SERVER FOR RENDER =================
+# ================= FLASK SERVER =================
 
 flask_app = Flask(__name__)
 
@@ -44,13 +43,9 @@ def home():
     return "Bot is running!"
 
 def run_flask():
-    # Use port 10000 for Render compatibility
     flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
-# Start Flask in a separate thread
-Thread(target=run_flask, daemon=True).start()
-
-# ================= DATABASE =================
+# ================= DATABASE INIT =================
 
 async def init_db(app):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -87,7 +82,7 @@ async def is_subscribed(bot, user_id):
             return False
     return True
 
-# ================= UI =================
+# ================= UI MARKUPS =================
 
 def join_markup():
     buttons = [[InlineKeyboardButton(f"📢 Join {ch}", url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]
@@ -101,6 +96,14 @@ def main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+def withdraw_markup():
+    buttons = [
+        [InlineKeyboardButton("₹500 Gift Card (10 Points)", callback_data="wd_500")],
+        [InlineKeyboardButton("₹1000 Gift Card (18 Points)", callback_data="wd_1000")],
+        [InlineKeyboardButton("₹2000 Gift Card (30 Points)", callback_data="wd_2000")]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
 # ================= HANDLERS =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,9 +113,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT * FROM users WHERE user_id=?", (user_id,)) as cur:
-            user_data = await cur.fetchone()
+            user_exists = await cur.fetchone()
 
-        if not user_data:
+        if not user_exists:
             ref_by = None
             if args and args[0].isdigit():
                 ref_candidate = int(args[0])
@@ -125,17 +128,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await db.commit()
             if ref_by:
-                # Store pending referral in context until they verify joining channels
                 context.user_data['pending_ref'] = ref_by
 
     if not await is_subscribed(context.bot, user_id):
         await update.message.reply_text(
-            f"👋 *Welcome {esc(user.first_name)}*\!\n\nTo use this bot, you must join our channels first\.",
+            f"👋 *Welcome {esc(user.first_name)}*\!\n\nYou must join our channels to earn points\.",
             reply_markup=join_markup(),
             parse_mode=ParseMode.MARKDOWN_V2
         )
     else:
-        await update.message.reply_text("✨ Welcome back to the SHEIN Voucher Bot!", reply_markup=main_menu())
+        await update.message.reply_text("✨ Welcome back!", reply_markup=main_menu())
 
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -145,21 +147,19 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_id = context.user_data.pop('pending_ref', None)
         if ref_id:
             async with aiosqlite.connect(DB_PATH) as db:
-                # Credit the referrer 1 point for a successful referral
                 await db.execute(
-                    "UPDATE users SET points=points+1, referrals=referrals+1 WHERE user_id=?",
+                    "UPDATE users SET points = points + 1, referrals = referrals + 1 WHERE user_id = ?",
                     (ref_id,)
                 )
                 await db.commit()
                 try:
-                    await context.bot.send_message(ref_id, "🎉 Someone joined using your link! You earned 1 point.")
-                except:
-                    pass
+                    await context.bot.send_message(ref_id, "🎉 New Referral! You earned 1 point.")
+                except: pass
 
-        await query.edit_message_text("✅ Membership Verified! You can now use the bot.")
+        await query.edit_message_text("✅ Verified! Use the menu below:")
         await context.bot.send_message(user_id, "Main Menu:", reply_markup=main_menu())
     else:
-        await query.answer("❌ You haven't joined all channels yet!", show_alert=True)
+        await query.answer("❌ Please join all channels first!", show_alert=True)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -170,39 +170,42 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with db.execute("SELECT * FROM users WHERE user_id=?", (user_id,)) as cur:
             user = await cur.fetchone()
 
+    if not user:
+        return # User not in DB
+
     if text == "💰 Balance":
-        await update.message.reply_text(f"Your Current Balance: *{user['points']} Points*", parse_mode=ParseMode.MARKDOWN_V2)
+        await update.message.reply_text(f"💎 *Balance Info*\n\nYour Points: `{user['points']}`\nTotal Referrals: `{user['referrals']}`", parse_mode=ParseMode.MARKDOWN_V2)
 
     elif text == "🎁 Refer & Earn":
         ref_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
-        msg = (
-            f"🔗 *Your Referral Link:*\n`{ref_link}`\n\n"
-            f"Share this link with friends\! For every friend who joins, you get *1 Point*\.\n"
-            f"Total Referrals: {user['referrals']}"
-        )
+        msg = f"🚀 *Refer & Earn Points*\n\nShare your link:\n`{ref_link}`\n\nGet *1 Point* for every valid join\!"
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN_V2)
 
     elif text == "👤 Profile":
-        msg = (
-            f"👤 *User Profile*\n"
-            f"ID: `{user['user_id']}`\n"
-            f"Points: {user['points']}\n"
-            f"Joined: {user['join_date']}"
-        )
+        msg = f"👤 *Your Profile*\n\nID: `{user_id}`\nPoints: `{user['points']}`\nJoined: `{user['join_date']}`"
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN_V2)
 
     elif text == "🎟 Withdraw Voucher":
-        await update.message.reply_text("Voucher withdrawal system is being updated. Minimum points required: 10.")
+        await update.message.reply_text("Select a Gift Card to redeem:", reply_markup=withdraw_markup())
+
+async def withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    # Handle withdrawal logic here if you want to automate code generation
+    await query.answer("You need at least 10 points to withdraw.", show_alert=True)
 
 # ================= MAIN =================
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    
+    # Start Flask
+    Thread(target=run_flask, daemon=True).start()
 
     app = ApplicationBuilder().token(TOKEN).post_init(init_db).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify$"))
+    app.add_handler(CallbackQueryHandler(withdraw_callback, pattern="^wd_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("Bot is live...")
