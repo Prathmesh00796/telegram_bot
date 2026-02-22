@@ -3,7 +3,11 @@ import random
 import string
 import asyncio
 import aiosqlite
+import os
 from datetime import datetime
+from threading import Thread
+from flask import Flask
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -24,10 +28,23 @@ from telegram.helpers import escape_markdown
 
 # --- CONFIGURATION ---
 TOKEN = "8136516055:AAGfHKSlQoSrWVVVmXGUcDqMGy7oA2DjtKA"
-ADMIN_ID = 6843292223  # Your Telegram User ID
-CHANNELS = ["@freecourse6969", "@lootlebigdeels" , "@pcsheinstock"]  # Required channels (with @)
-BOT_USERNAME = "sheinfreecodesbot"  # Without @
-DB_PATH = "referral_bot.db"
+ADMIN_ID = 6843292223 
+CHANNELS = ["@freecourse6969", "@lootlebigdeels" , "@pcsheinstock"] 
+BOT_USERNAME = "sheinfreecodesbot" 
+DB_PATH = "referral_bot1.db"
+
+# --- WEB SERVER FOR RENDER ---
+# This keeps Render happy by providing an HTTP port
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "Bot is running 24/7!"
+
+def run_flask():
+    # Render provides a PORT environment variable automatically
+    port = int(os.environ.get('PORT', 8080))
+    app_flask.run(host='0.0.0.0', port=port)
 
 # --- DATABASE LOGIC ---
 async def init_db():
@@ -52,8 +69,7 @@ async def init_db():
 
 # --- UTILS ---
 def esc(text):
-    """Escape text for MarkdownV2."""
-    return escape_markdown(str(text), version=2)
+    return escape_markdown(str(text or "User"), version=2)
 
 async def is_subscribed(bot, user_id):
     for channel in CHANNELS:
@@ -61,7 +77,8 @@ async def is_subscribed(bot, user_id):
             member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
             if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
                 return False
-        except Exception: return False
+        except Exception: 
+            return False
     return True
 
 async def generate_voucher(amount):
@@ -70,7 +87,8 @@ async def generate_voucher(amount):
         code = prefix + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT 1 FROM withdrawals WHERE voucher_code=?", (code,)) as cur:
-                if not await cur.fetchone(): return code
+                if not await cur.fetchone(): 
+                    return code
 
 # --- UI COMPONENTS ---
 def join_markup():
@@ -102,7 +120,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, user.username, ref_by, datetime.now().strftime("%Y-%m-%d"))
             )
             await db.commit()
-            if ref_by: context.user_data['pending_ref'] = ref_by
+            if ref_by: 
+                context.user_data['pending_ref'] = ref_by
 
     if not await is_subscribed(context.bot, user_id):
         await update.message.reply_text(
@@ -122,8 +141,10 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute("UPDATE users SET points=points+1, referrals=referrals+1 WHERE user_id=?", (ref_id,))
                 await db.commit()
-                try: await context.bot.send_message(ref_id, "🎊 *New Referral\\!* You earned 1 point\\.", parse_mode=ParseMode.MARKDOWN_V2)
-                except: pass
+                try: 
+                    await context.bot.send_message(ref_id, "🎊 *New Referral\\!* You earned 1 point\\.", parse_mode=ParseMode.MARKDOWN_V2)
+                except: 
+                    pass
 
         await query.edit_message_text("✅ *Verified\\!* You can now start earning\\.", parse_mode=ParseMode.MARKDOWN_V2)
         await context.bot.send_message(user_id, "Main Menu opened\\:", reply_markup=main_menu())
@@ -142,6 +163,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM users WHERE user_id=?", (user_id,)) as cur:
             user = await cur.fetchone()
+
+    if not user: return
 
     if text == "💰 Balance":
         msg = (f"💳 *Your Wallet*\n\n"
@@ -204,7 +227,15 @@ async def withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- MAIN ---
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(init_db())
+    
+    # Start the background flask server
+    Thread(target=run_flask).start()
+    
+    # Initialize the local database
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(init_db())
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -212,5 +243,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(withdraw_callback, pattern="^wd_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("Bot is live with Enhanced UI...")
+    print("Bot is live with Keep-Alive Server...")
     app.run_polling()
