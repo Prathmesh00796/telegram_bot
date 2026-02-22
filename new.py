@@ -89,9 +89,9 @@ def main_menu():
 
 def withdrawal_menu():
     buttons = [
-        [InlineKeyboardButton("🛍️ ₹500 SHEIN Card (10 Pts)", callback_data="wd_500")],
-        [InlineKeyboardButton("🛍️ ₹1000 SHEIN Card (18 Pts)", callback_data="wd_1000")],
-        [InlineKeyboardButton("🛍️ ₹2500 SHEIN Card (40 Pts)", callback_data="wd_2500")]
+        [InlineKeyboardButton("🛍️ ₹500 SHEIN Card (2 Pts)", callback_data="wd_500")],
+        [InlineKeyboardButton("🛍️ ₹1000 SHEIN Card (5 Pts)", callback_data="wd_1000")],
+        [InlineKeyboardButton("🛍️ ₹2000 SHEIN Card (10 Pts)", callback_data="wd_2500")]
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -225,3 +225,4 @@ if __name__ == "__main__":
 
     print(f"Enhanced Bot Live. DB: {DB_PATH}")
     app.run_polling()
+
