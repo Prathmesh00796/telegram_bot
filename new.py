@@ -30,7 +30,7 @@ from telegram.helpers import escape_markdown
 TOKEN = "8136516055:AAGfHKSlQoSrWVVVmXGUcDqMGy7oA2DjtKA"
 ADMIN_ID = 6843292223 
 CHANNELS = ["@freecourse6969", "@lootlebigdeels" , "@pcsheinstock"] 
-BOT_USERNAME = "sheinfreecodesbot" 
+BOT_USERNAME = "@Sheinfreevouchergiftbot" 
 DB_PATH = "referral_bot1.db"
 
 # --- WEB SERVER FOR RENDER ---
@@ -245,3 +245,4 @@ if __name__ == "__main__":
 
     print("Bot is live with Keep-Alive Server...")
     app.run_polling()
+
